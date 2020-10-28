@@ -71,7 +71,6 @@ class SmoothedValue(object):
             max=self.max,
             value=self.value)
 
-
 def all_gather(data):
     """
     Run all_gather on arbitrary picklable data (not necessarily tensors)

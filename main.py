@@ -12,6 +12,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 import xml.etree.ElementTree as ET
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+import pickle
 
 idx_to_label = {
     0: 'background',
@@ -19,7 +20,6 @@ idx_to_label = {
     2: 'other'
 }
 label_to_idx = {v: k for k, v in idx_to_label.items()}
-
 
 def get_bboxes(annot_path):
     tree = ET.parse(annot_path)
@@ -100,7 +100,7 @@ def get_transform(train):
         transforms.append(T.RandomHorizontalFlip(0.5))
     return T.Compose(transforms)
 
-from engine import train_one_epoch, evaluate
+from engine import train_one_epoch, evaluate_GFO
 import utils
 
 
@@ -145,18 +145,25 @@ def main():
                                                    gamma=0.1)
 
     # let's train it for 10 epochs
-    num_epochs = 10
-
+    num_epochs = 50
+    train_losses_dict = {'loss': [], 'loss_classifier': [], 'loss_box_reg': [], 'loss_objectness': [], 'loss_rpn_box_reg': []}
+    eval_losses_dict = {'loss': [], 'loss_classifier': [], 'loss_box_reg': [], 'loss_objectness': [], 'loss_rpn_box_reg': []}
+    
     for epoch in range(num_epochs):
         # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+        train_metrics = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+        for k in train_losses_dict.keys():
+            train_losses_dict[k].append(train_metrics.meters[k].avg)
         # update the learning rate
         lr_scheduler.step()
         # evaluate on the test dataset
-        evaluate(model, data_loader_test, device=device)
-
-    torch.save(model,'test')
-
+        eval_metrics = evaluate_GFO(model, data_loader_test, device=device, print_freq=10)
+        for k in eval_losses_dict.keys():
+            eval_losses_dict[k].append(eval_metrics.meters[k].avg)
+    
+    torch.save(model,'test.pt')
+    pickle.dump(train_losses_dict,open('perfs.p','wb'))
+    pickle.dump(eval_losses_dict,open('perfs2.p','wb'))
     print("That's it!")
 
 # Press the green button in the gutter to run the script.

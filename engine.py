@@ -107,3 +107,29 @@ def evaluate(model, data_loader, device):
     coco_evaluator.summarize()
     torch.set_num_threads(n_threads)
     return coco_evaluator
+
+@torch.no_grad()
+def evaluate_GFO(model, data_loader, device, print_freq):
+    model.train() # stay in train for evaluation to get access to the same losses
+    metric_logger = utils.MetricLogger(delimiter="  ")
+
+    for images, targets in metric_logger.log_every(data_loader, print_freq):
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+        loss_dict = model(images, targets)
+
+        # reduce losses over all GPUs for logging purposes
+        loss_dict_reduced = utils.reduce_dict(loss_dict)
+        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+
+        loss_value = losses_reduced.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+            print(loss_dict_reduced)
+            sys.exit(1)
+
+        metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
+
+    return metric_logger
