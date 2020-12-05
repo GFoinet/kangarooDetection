@@ -13,7 +13,19 @@ import xml.etree.ElementTree as ET
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 import pickle
+from datetime import datetime
+from analyse_training import analyseTrainingFromPath
 
+CFG = {
+       'training_batch_size':2,
+       'training_EPOCHS':30,
+       'valid_batch_size':1,
+       'SGD_lr':0.01,
+       'SGD_momentum':0.9,
+       'SGD_weights_decay':0.0,
+       'LRscheduler_step_size':10,
+       'LRscheduler_gamma':1
+       }
 idx_to_label = {
     0: 'background',
     1: 'kangaroo',
@@ -104,7 +116,7 @@ from engine import train_one_epoch, evaluate_GFO
 import utils
 
 
-def main():
+def main(exp_folder:str='')->None:
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -122,11 +134,11 @@ def main():
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=True, num_workers=4,
+        dataset, batch_size=CFG['training_batch_size'], shuffle=True, num_workers=4,
         collate_fn=utils.collate_fn)
 
     data_loader_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=1, shuffle=False, num_workers=4,
+        dataset_test, batch_size=CFG['valid_batch_size'], shuffle=False, num_workers=4,
         collate_fn=utils.collate_fn)
 
     # get the model using our helper function
@@ -137,19 +149,19 @@ def main():
 
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=0.005,
-                                momentum=0.9, weight_decay=0.0005)
+    optimizer = torch.optim.SGD(params, lr=CFG['SGD_lr'],
+                                momentum=CFG['SGD_momentum'], weight_decay=CFG['SGD_weights_decay'])
     # and a learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
-                                                   step_size=3,
-                                                   gamma=0.1)
+                                                   step_size=CFG['LRscheduler_step_size'],
+                                                   gamma=CFG['LRscheduler_gamma'])
 
-    # let's train it for 10 epochs
-    num_epochs = 50
+    # let's train it
+
     train_losses_dict = {'loss': [], 'loss_classifier': [], 'loss_box_reg': [], 'loss_objectness': [], 'loss_rpn_box_reg': []}
     eval_losses_dict = {'loss': [], 'loss_classifier': [], 'loss_box_reg': [], 'loss_objectness': [], 'loss_rpn_box_reg': []}
     
-    for epoch in range(num_epochs):
+    for epoch in range(CFG['training_EPOCHS']):
         # train for one epoch, printing every 10 iterations
         train_metrics = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
         for k in train_losses_dict.keys():
@@ -161,13 +173,22 @@ def main():
         for k in eval_losses_dict.keys():
             eval_losses_dict[k].append(eval_metrics.meters[k].avg)
     
-    torch.save(model,'test.pt')
-    pickle.dump(train_losses_dict,open('perfs.p','wb'))
-    pickle.dump(eval_losses_dict,open('perfs2.p','wb'))
+    torch.save(model,os.path.join(exp_folder,'test.pt'))
+    pickle.dump([train_losses_dict, eval_losses_dict],open(os.path.join(exp_folder,'perfs.p'),'wb'))
+    pickle.dump(CFG,open(os.path.join(exp_folder,'config.p'),'wb'))
     print("That's it!")
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    main()
+    now = datetime.now()
+    experiment_folder_name = 'experiments/'
+    if not os.path.exists(experiment_folder_name):
+        os.makedirs(experiment_folder_name)
+    experiment_name = now.strftime("%d%Y%m%d_%Hh%m:%Ss")
+    os.mkdir(os.path.join(experiment_folder_name,experiment_name))
+    exp_path = os.path.join(experiment_folder_name,experiment_name)
+    main(exp_path)
+    analyseTrainingFromPath(exp_path)
+    
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
