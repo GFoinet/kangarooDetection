@@ -236,7 +236,7 @@ if __name__ == '__main__':
     experiment_folder_name = 'experiments/'
     if not os.path.exists(experiment_folder_name):
         os.makedirs(experiment_folder_name)
-    experiment_name = now.strftime("%d%Y%m%d_%Hh%m:%Ss")
+    experiment_name = now.strftime("%Y%m%d_%Hh%m:%Ss")
     os.mkdir(os.path.join(experiment_folder_name,experiment_name))
     exp_path = os.path.join(experiment_folder_name,experiment_name)
     main(exp_path)
