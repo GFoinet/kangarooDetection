@@ -114,7 +114,7 @@ def get_transform(train):
     transforms.append(A.RandomGamma(p=1))
     transforms.append(A.CLAHE(p=1))
     transforms.append(A.HorizontalFlip(p=0.5))
-    transforms.append(A.ShiftScaleRotate(rotate_limit=10,p=0.5))
+    transforms.append(A.ShiftScaleRotate(rotate_limit=15,p=0.5))
     return A.Compose(transforms, bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
 
 
