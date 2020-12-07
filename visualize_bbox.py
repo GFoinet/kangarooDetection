@@ -18,7 +18,7 @@ def visualize_bbox(img, bbox, class_name, color=BOX_COLOR, thickness=2):
     x_max = int(x_max)
     y_min = int(y_min)
     y_max = int(y_max)
-    print((x_min, x_max, y_min, y_max))
+
     ((text_width, text_height), _) = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)    
     cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color=color, thickness=thickness)
     cv2.rectangle(img=img, pt1=(x_min, y_min - int(1.3 * text_height)), pt2=(x_min + text_width, y_min), color=BOX_COLOR , thickness=-1)
@@ -33,13 +33,14 @@ def visualize_bbox(img, bbox, class_name, color=BOX_COLOR, thickness=2):
     )
     return img
 
-def visualize(image, bboxes, category_ids, category_id_to_name):
+def visualize(image, bboxes, category_ids, category_id_to_name,show=True):
     img = image.copy()
     for bbox, category_id in zip(bboxes, category_ids):
         class_name = category_id_to_name[category_id]
-        print(class_name)
         img = visualize_bbox(img, bbox, class_name)
-    plt.figure(figsize=(12, 12))
-    plt.axis('off')
-    plt.imshow(img)
-    plt.show()
+    if show:
+        plt.figure(figsize=(12, 12))
+        plt.axis('off')
+        plt.imshow(img)
+        plt.show()
+    return img
