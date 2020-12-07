@@ -12,9 +12,15 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 import xml.etree.ElementTree as ET
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection import FasterRCNN
+from torchvision.models.detection.rpn import AnchorGenerator
 import pickle
 from datetime import datetime
 from analyse_training import analyseTrainingFromPath
+import albumentations as A
+from albumentations import pytorch as Ahelper
+import cv2
+import matplotlib.pyplot as plt
 
 CFG = {
        'training_batch_size':2,
@@ -33,6 +39,8 @@ idx_to_label = {
 }
 label_to_idx = {v: k for k, v in idx_to_label.items()}
 
+
+    
 def get_bboxes(annot_path):
     tree = ET.parse(annot_path)
     root = tree.getroot()
@@ -62,29 +70,24 @@ class kangarooDataset(object):
         img = Image.open(img_path).convert("RGB")
         # get bounding box coordinates for each mask
         targets, boxes = get_bboxes(annot_path)
+
         num_objs = len(targets)
 
-        # convert everything into a torch.Tensor
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        # there is only one class
-        labels = torch.as_tensor(targets, dtype=torch.int64)
-
-        image_id = torch.tensor([idx])
-        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
-        # suppose all instances are not crowd
-        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-
-        target = {}
-        target["boxes"] = boxes
-        target["labels"] = labels
-        target["image_id"] = image_id
-        target["area"] = area
-        target["iscrowd"] = iscrowd
 
         if self.transforms is not None:
-            img, target = self.transforms(img, target)
-
-        return img, target
+            transformed = self.transforms(image=np.array(img),bboxes=boxes,class_labels=targets)
+        img_out = transformed['image']
+        bboxes_out = transformed['bboxes']
+        labels_out = transformed['class_labels']
+        
+        target = {}
+        target["boxes"] = torch.as_tensor(bboxes_out, dtype=torch.float32)
+        target["labels"] = torch.as_tensor(labels_out, dtype=torch.int64)
+        target["image_id"] = torch.tensor([idx])
+        target["area"] = torch.tensor((target["boxes"][:, 3] - target["boxes"][:, 1]) * (target["boxes"][:, 2] - target["boxes"][:, 0]))
+        target["iscrowd"] = torch.zeros((num_objs,), dtype=torch.int64)
+        
+        return img_out,target
 
     def __len__(self):
         return len(self.imgs)
@@ -103,6 +106,43 @@ def get_model_instance_segmentation(num_classes):
 
     return model
 
+def getModelWithCustomBackbone(num_classes:int=2):
+    
+    # load a pre-trained model for classification and return
+    # only the features
+    backbone = torchvision.models.mobilenet_v2(pretrained=True).features
+    # FasterRCNN needs to know the number of
+    # output channels in a backbone. For mobilenet_v2, it's 1280
+    # so we need to add it here
+    backbone.out_channels = 1280
+    
+    # let's make the RPN generate 5 x 3 anchors per spatial
+    # location, with 5 different sizes and 3 different aspect
+    # ratios. We have a Tuple[Tuple[int]] because each feature
+    # map could potentially have different sizes and
+    # aspect ratios
+    anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),),
+                                       aspect_ratios=((0.5, 1.0, 2.0),))
+    
+    # let's define what are the feature maps that we will
+    # use to perform the region of interest cropping, as well as
+    # the size of the crop after rescaling.
+    # if your backbone returns a Tensor, featmap_names is expected to
+    # be [0]. More generally, the backbone should return an
+    # OrderedDict[Tensor], and in featmap_names you can choose which
+    # feature maps to use.
+    roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0],
+                                                    output_size=7,
+                                                    sampling_ratio=2)
+    
+    # put the pieces together inside a FasterRCNN model
+    model = FasterRCNN(backbone,
+                       num_classes=num_classes,
+                       rpn_anchor_generator=anchor_generator,
+                       box_roi_pool=roi_pooler)
+    
+    return model
+
 import transforms as T
 
 def get_transform(train):
@@ -111,6 +151,18 @@ def get_transform(train):
     if train:
         transforms.append(T.RandomHorizontalFlip(0.5))
     return T.Compose(transforms)
+
+def get_transformA(train):
+    transforms = []
+    if train:
+        transforms.append(A.RandomBrightnessContrast(p=1))
+        transforms.append(A.RandomGamma(p=1))
+        transforms.append(A.CLAHE(p=1))
+        transforms.append(A.HorizontalFlip(p=0.5))
+        transforms.append(A.ShiftScaleRotate(rotate_limit=15,p=0.5))
+    transforms.append(Ahelper.ToTensor())
+    return A.Compose(transforms, bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
+
 
 from engine import train_one_epoch, evaluate_GFO
 import utils
@@ -123,8 +175,8 @@ def main(exp_folder:str='')->None:
     # our dataset has two classes only - background and person
     num_classes = 2
     # use our dataset and defined transformations
-    dataset = kangarooDataset('kangaroo', get_transform(train=True))
-    dataset_test = kangarooDataset('kangaroo', get_transform(train=False))
+    dataset = kangarooDataset('kangaroo', get_transformA(train=True))
+    dataset_test = kangarooDataset('kangaroo', get_transformA(train=False))
 
     # split the dataset in train and test set
     indices = torch.randperm(len(dataset)).tolist()
@@ -143,7 +195,7 @@ def main(exp_folder:str='')->None:
 
     # get the model using our helper function
     model = get_model_instance_segmentation(num_classes)
-
+    # model = getModelWithCustomBackbone(num_classes)
     # move model to the right device
     model.to(device)
 
