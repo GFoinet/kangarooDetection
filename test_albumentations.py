@@ -15,6 +15,7 @@ import torch
 import utils
 import matplotlib.pyplot as plt
 from matplotlib import patches
+from visualize_bbox import visualize
 
 idx_to_label = {
     0: 'background',
@@ -71,33 +72,36 @@ class kangarooDataset(object):
         target["image_id"] = image_id
         target["area"] = area
         target["iscrowd"] = iscrowd
-        # img.show()
-        fig = plt.figure(1)
-        #add axes to the image
-        ax = fig.add_axes([0,0,1,1])
+        # # img.show()
+        # fig = plt.figure(1)
+        # #add axes to the image
+        # ax = fig.add_axes([0,0,1,1])
 
-        print(np.shape(np.array(img)))
-        plt.imshow(np.array(img))
-        for i in range(num_objs):
-            rect = patches.Rectangle((boxes[i,0],boxes[i,1]), boxes[i,2]-boxes[i,0], boxes[i,3]-boxes[i,1], edgecolor = 'r', facecolor = 'none')
-            ax.add_patch(rect)
-        plt.show()
+        # print(np.shape(np.array(img)))
+        # plt.imshow(np.array(img))
+        # for i in range(num_objs):
+        #     rect = patches.Rectangle((boxes[i,0],boxes[i,1]), boxes[i,2]-boxes[i,0], boxes[i,3]-boxes[i,1], edgecolor = 'r', facecolor = 'none')
+        #     ax.add_patch(rect)
+        # plt.show()
+        # visualize(img,img_out,targets,idx_to_label)
         
         if self.transforms is not None:
             transformed = self.transforms(image=np.array(img),bboxes=boxes_,class_labels=targets)
         img_out = transformed['image']
         bboxes_out = transformed['bboxes']
-        fig = plt.figure(2)
-        ax = fig.add_axes([0,0,1,1])
-        plt.imshow(img_out)
-        print(type(bboxes_out))
-        print(len(bboxes_out))
-        print(bboxes_out[0])
-        print(bboxes_out[1])
-        for i in range(num_objs):
-            rect = patches.Rectangle((bboxes_out[i][0],bboxes_out[i][1]), bboxes_out[i][2]-bboxes_out[i][0], bboxes_out[i][3]-bboxes_out[i][1], edgecolor = 'r', facecolor = 'none')
-            ax.add_patch(rect)
-        plt.show()
+        targets_out = transformed['class_labels']
+        # fig = plt.figure(2)
+        # ax = fig.add_axes([0,0,1,1])
+        # plt.imshow(img_out)
+        # print(type(bboxes_out))
+        # print(len(bboxes_out))
+        # print(bboxes_out[0])
+        # print(bboxes_out[1])
+        # for i in range(num_objs):
+        #     rect = patches.Rectangle((bboxes_out[i][0],bboxes_out[i][1]), bboxes_out[i][2]-bboxes_out[i][0], bboxes_out[i][3]-bboxes_out[i][1], edgecolor = 'r', facecolor = 'none')
+        #     ax.add_patch(rect)
+        # plt.show()
+        visualize(img_out,bboxes_out,targets_out,idx_to_label)
         
         return img, target
 
@@ -106,8 +110,11 @@ class kangarooDataset(object):
     
 def get_transform(train):
     transforms = []
-    transforms.append(A.HorizontalFlip(p=0.99))
-    # return A.Compose(transforms, bbox_params=A.BboxParams(format='pascal_voc'))
+    transforms.append(A.RandomBrightnessContrast(p=1))
+    transforms.append(A.RandomGamma(p=1))
+    transforms.append(A.CLAHE(p=1))
+    transforms.append(A.HorizontalFlip(p=0.5))
+    transforms.append(A.ShiftScaleRotate(rotate_limit=10,p=0.5))
     return A.Compose(transforms, bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']))
 
 
@@ -119,3 +126,4 @@ data_loader = torch.utils.data.DataLoader(
 
 for images, targets in data_loader:
     images = list(img for img in images)
+    
